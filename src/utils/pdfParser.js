@@ -1,14 +1,42 @@
-﻿import * as pdfjsLib from 'pdfjs-dist';
+﻿/**
+ * Dynamic loader for PDF.js to prevent any bundler crashes or top-level worker failure.
+ */
+async function loadPdfJs() {
+  if (typeof window !== 'undefined' && window.pdfjsLib) {
+    return window.pdfjsLib;
+  }
 
-// Configure PDF.js worker to use CDN for reliable client-side execution on any static host
-if (typeof window !== 'undefined') {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version || '3.11.174'}/pdf.worker.min.js`;
+  return new Promise((resolve, reject) => {
+    // If script is already attached
+    const existing = document.getElementById('pdfjs-cdn-script');
+    if (existing) {
+      if (window.pdfjsLib) return resolve(window.pdfjsLib);
+      existing.addEventListener('load', () => resolve(window.pdfjsLib));
+      existing.addEventListener('error', reject);
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id = 'pdfjs-cdn-script';
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js';
+    script.onload = () => {
+      if (window.pdfjsLib) {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+        resolve(window.pdfjsLib);
+      } else {
+        reject(new Error('PDF.js failed to initialize from CDN'));
+      }
+    };
+    script.onerror = () => reject(new Error('Failed to load PDF library script. Please check your internet connection.'));
+    document.head.appendChild(script);
+  });
 }
 
 /**
  * Extract raw text from a PDF file using PDF.js
  */
 export async function extractTextFromPDF(file, onProgress) {
+  const pdfjsLib = await loadPdfJs();
   const arrayBuffer = await file.arrayBuffer();
   const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
   
@@ -57,7 +85,6 @@ export function parseMCQText(rawText) {
   const answerKeyMatch = text.match(/(?:(?:ANSWER\s*KEY|ANSWERS|KEYS?|SOLUTIONS?)[\s\S]*$)/i);
   if (answerKeyMatch) {
     const keySection = answerKeyMatch[0];
-    // Match pairs like "1. A", "1-B", "1(C)", "1 : D", "1. (b)", "Q1: A"
     const pairRegex = /(?:Q\.?\s*)?(\d+)[\.\s\:\-\)\(\]]*([A-Da-d1-4])\b/g;
     let pair;
     while ((pair = pairRegex.exec(keySection)) !== null) {
@@ -76,16 +103,9 @@ export function parseMCQText(rawText) {
   let currentQ = null;
   let qCounter = 0;
 
-  // Question starter regex: e.g., "1.", "1)", "Q1.", "Q.1", "Question 1:", "1 - "
   const questionRegex = /^(?:Q(?:uestion|ue)?\.?\s*)?(\d{1,4})[\.\:\)\-]\s*(.*)$/i;
-  
-  // Option starter regex: e.g., "(A)", "[A]", "A.", "A)", "a.", "a)", "1.", "1)"
   const optionRegex = /^(?:[\(\[]?([A-Da-d1-4])[\)\]\.\:\-]\s*)(.*)$/;
-  
-  // Inline answer regex: e.g., "Ans: A", "Answer: B", "Correct: (C)", "[Ans: D]"
   const inlineAnsRegex = /(?:Ans(?:wer)?|Correct(?:\s*Option)?|Key)[\:\s\-\=\[\(]+([A-Da-d1-4])[\)\]]?/i;
-  
-  // Explanation regex: e.g., "Explanation: ...", "Solution: ..."
   const expRegex = /^(?:Explanation|Solution|Expln|Note)[\:\-\s]+(.*)$/i;
 
   for (let i = 0; i < lines.length; i++) {
@@ -95,7 +115,6 @@ export function parseMCQText(rawText) {
     const ansMatch = line.match(inlineAnsRegex);
     if (ansMatch && currentQ) {
       currentQ.correctAnswer = normalizeOptionChar(ansMatch[1]);
-      // Remove answer line from question text or option if it was attached
       continue;
     }
 
@@ -108,11 +127,9 @@ export function parseMCQText(rawText) {
 
     // Check for new question
     const qMatch = line.match(questionRegex);
-    // Extra validation: line shouldn't look like an option (e.g. "1. Option A" could be option if within a Q)
     const isOptionFormat = line.match(/^[\(\[]?[A-Da-d][\)\]\.]/);
     
     if (qMatch && !isOptionFormat) {
-      // If we already had a question with options, save it
       if (currentQ && currentQ.options.length >= 2) {
         finalizeQuestion(currentQ, answerKeyMap);
         questions.push(currentQ);
@@ -139,7 +156,6 @@ export function parseMCQText(rawText) {
       const optKey = normalizeOptionChar(optMatch[1]);
       const optText = optMatch[2].trim();
       
-      // Check if this option line also contains inline answer
       const optAns = optText.match(inlineAnsRegex);
       let cleanOptText = optText;
       if (optAns) {
@@ -154,7 +170,7 @@ export function parseMCQText(rawText) {
       continue;
     }
 
-    // Also handle inline multiple options in a single line (e.g. "(A) Apple (B) Banana (C) Cherry (D) Date")
+    // Inline multiple options in a single line
     if (currentQ && (line.includes('(A)') || line.includes('(a)') || line.includes('A)') || line.includes('A.'))) {
       const multiOptRegex = /[\(\[]?([A-Da-d1-4])[\)\]\.\:]\s*([^\(\[A-Da-d1-4\n]+)/g;
       let m;
@@ -173,12 +189,11 @@ export function parseMCQText(rawText) {
       }
     }
 
-    // If continuation of current question text or explanation
+    // Continuation
     if (currentQ) {
       if (currentQ.options.length === 0) {
         currentQ.question += (currentQ.question ? ' ' : '') + line;
       } else {
-        // Continuation of last option
         const lastOpt = currentQ.options[currentQ.options.length - 1];
         lastOpt.text += ' ' + line;
       }
@@ -191,7 +206,6 @@ export function parseMCQText(rawText) {
     questions.push(currentQ);
   }
 
-  // If questions are still empty, try flexible block-by-block heuristic fallback
   if (questions.length === 0) {
     return parseFallbackBlocks(text);
   }
@@ -200,19 +214,16 @@ export function parseMCQText(rawText) {
 }
 
 function finalizeQuestion(q, answerKeyMap) {
-  // Ensure options have clean standard keys (A, B, C, D)
   const standardKeys = ['A', 'B', 'C', 'D', 'E', 'F'];
   q.options = q.options.map((opt, idx) => ({
     key: standardKeys[idx] || opt.key || String.fromCharCode(65 + idx),
     text: opt.text.trim()
   }));
 
-  // Check if answer was in answerKeyMap
   if (!q.correctAnswer && answerKeyMap[q.originalNumber]) {
     q.correctAnswer = answerKeyMap[q.originalNumber];
   }
 
-  // Default to 'A' if undetected so the mock test can still run seamlessly
   if (!q.correctAnswer && q.options.length > 0) {
     q.correctAnswer = 'A';
     q.needsAnswerReview = true;

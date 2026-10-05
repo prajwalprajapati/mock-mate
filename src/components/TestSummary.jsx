@@ -34,19 +34,22 @@ export default function TestSummary({ resultData, onRetake, onPracticeWeak, onNe
   });
 
   const totalQuestions = questions.length;
-  const accuracyPercent = answeredCount > 0 ? Math.round((correctCount / (correctCount + incorrectCount)) * 100) : 0;
-  const scorePercent = Math.round((correctCount / totalQuestions) * 100);
-
-  var answeredCount = correctCount + incorrectCount;
+  const totalAnswered = correctCount + incorrectCount;
+  const accuracyPercent = totalAnswered > 0 ? Math.round((correctCount / totalAnswered) * 100) : 0;
+  const scorePercent = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
 
   // Fire confetti on high score
   useEffect(() => {
     if (scorePercent >= 60) {
-      confetti({
-        particleCount: 80,
-        spread: 70,
-        origin: { y: 0.6 }
-      });
+      try {
+        confetti({
+          particleCount: 80,
+          spread: 70,
+          origin: { y: 0.6 }
+        });
+      } catch (e) {
+        // ignore confetti errors
+      }
     }
 
     // Save to storage
@@ -118,7 +121,7 @@ export default function TestSummary({ resultData, onRetake, onPracticeWeak, onNe
             {accuracyPercent}%
           </div>
           <span className="text-xs text-slate-400 mt-1 block">
-            {correctCount} of {answeredCount} correct
+            {correctCount} of {totalAnswered} correct
           </span>
         </div>
 
@@ -129,7 +132,7 @@ export default function TestSummary({ resultData, onRetake, onPracticeWeak, onNe
             {formatTime(timeSpentSeconds)}
           </div>
           <span className="text-xs text-slate-400 mt-1 block">
-            {timeSpentSeconds && answeredCount ? `~${Math.round(timeSpentSeconds / Math.max(1, answeredCount))}s / que` : 'Self-paced'}
+            {timeSpentSeconds && totalAnswered ? `~${Math.round(timeSpentSeconds / Math.max(1, totalAnswered))}s / que` : 'Self-paced'}
           </span>
         </div>
 

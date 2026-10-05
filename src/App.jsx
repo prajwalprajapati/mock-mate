@@ -10,7 +10,45 @@ import TestSummary from './components/TestSummary';
 import HistoryModal from './components/HistoryModal';
 import { SAMPLE_DATASETS } from './utils/sampleData';
 
-export default function App() {
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("App error:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 text-center text-white">
+          <div className="max-w-md w-full glass-panel p-8 rounded-2xl border border-red-500/30">
+            <h2 className="text-xl font-bold text-red-400 mb-2">Something went wrong</h2>
+            <p className="text-xs text-slate-400 mb-6">{this.state.error?.message || 'An unexpected error occurred.'}</p>
+            <button
+              onClick={() => {
+                localStorage.clear();
+                window.location.reload();
+              }}
+              className="px-6 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold"
+            >
+              Reset & Reload App
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function MainApp() {
   const [currentScreen, setCurrentScreen] = useState('upload'); // 'upload' | 'review' | 'exam' | 'practice' | 'flashcards' | 'summary'
   const [currentQuiz, setCurrentQuiz] = useState(null);
   const [activeTestData, setActiveTestData] = useState(null);
@@ -172,5 +210,13 @@ export default function App() {
       )}
 
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <ErrorBoundary>
+      <MainApp />
+    </ErrorBoundary>
   );
 }

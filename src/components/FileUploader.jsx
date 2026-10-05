@@ -1,5 +1,5 @@
 ﻿import React, { useState, useRef } from 'react';
-import { Upload, FileText, Sparkles, ArrowRight, Loader2, AlertCircle, CheckCircle2, ClipboardPaste } from 'lucide-react';
+import { Upload, FileText, Sparkles, ArrowRight, Loader2, AlertCircle, CheckCircle2, ClipboardPaste, BookOpen } from 'lucide-react';
 import { extractTextFromPDF, parseMCQText } from '../utils/pdfParser';
 import { SAMPLE_DATASETS } from '../utils/sampleData';
 

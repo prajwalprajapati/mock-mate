@@ -7,7 +7,6 @@ async function loadPdfJs() {
   }
 
   return new Promise((resolve, reject) => {
-    // If script is already attached
     const existing = document.getElementById('pdfjs-cdn-script');
     if (existing) {
       if (window.pdfjsLib) return resolve(window.pdfjsLib);
@@ -27,7 +26,7 @@ async function loadPdfJs() {
         reject(new Error('PDF.js failed to initialize from CDN'));
       }
     };
-    script.onerror = () => reject(new Error('Failed to load PDF library script. Please check your internet connection.'));
+    script.onerror = () => reject(new Error('Failed to load PDF library script.'));
     document.head.appendChild(script);
   });
 }
@@ -51,12 +50,17 @@ export async function extractTextFromPDF(file, onProgress) {
     
     // Sort items vertically then horizontally to maintain natural reading order
     const items = textContent.items.filter(item => item.str && item.str.trim().length > 0);
-    
+    items.sort((a, b) => {
+      const yDiff = b.transform[5] - a.transform[5];
+      if (Math.abs(yDiff) > 6) return yDiff;
+      return a.transform[4] - b.transform[4];
+    });
+
     let lastY;
     let pageString = '';
     
     for (const item of items) {
-      if (lastY === undefined || Math.abs(item.transform[5] - lastY) > 5) {
+      if (lastY === undefined || Math.abs(item.transform[5] - lastY) > 6) {
         pageString += '\n';
         lastY = item.transform[5];
       } else {
@@ -72,15 +76,14 @@ export async function extractTextFromPDF(file, onProgress) {
 }
 
 /**
- * Parses raw text extracted from PDF or pasted by user into structured MCQ objects
+ * Enhanced MCQ Parser that handles table columns, isolated numbers, code snippets, and page breaks.
  */
 export function parseMCQText(rawText) {
   if (!rawText || typeof rawText !== 'string') return [];
 
-  // Normalize line endings and whitespace
   let text = rawText.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
   
-  // Look for end-of-document answer key section (e.g. "Answer Key", "Answers:", "Key:")
+  // Extract answer key map if present at the end
   let answerKeyMap = {};
   const answerKeyMatch = text.match(/(?:(?:ANSWER\s*KEY|ANSWERS|KEYS?|SOLUTIONS?)[\s\S]*$)/i);
   if (answerKeyMatch) {
@@ -96,16 +99,24 @@ export function parseMCQText(rawText) {
     }
   }
 
-  // Split lines
-  const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+  const rawLines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
   
+  // Filter document title / header lines
+  const lines = rawLines.filter(l => {
+    if (/^MCQ\s+Practice\s+sheet$/i.test(l)) return false;
+    if (/^Page\s+\d+(\s+of\s+\d+)?$/i.test(l)) return false;
+    return true;
+  });
+
   const questions = [];
   let currentQ = null;
   let qCounter = 0;
 
-  const questionRegex = /^(?:Q(?:uestion|ue)?\.?\s*)?(\d{1,4})[\.\:\)\-]\s*(.*)$/i;
-  const optionRegex = /^(?:[\(\[]?([A-Da-d1-4])[\)\]\.\:\-]\s*)(.*)$/;
-  const inlineAnsRegex = /(?:Ans(?:wer)?|Correct(?:\s*Option)?|Key)[\:\s\-\=\[\(]+([A-Da-d1-4])[\)\]]?/i;
+  // Patterns
+  const isolatedNumRegex = /^(\d{1,4})$/;
+  const standardQRegex = /^(?:Q(?:uestion|ue)?\.?\s*)?(\d{1,4})(?:[\.\:\)\-]\s*|\s+)([A-Za-z<#{\s].*)$/i;
+  const optionRegex = /^(?:[a-dA-D1-4][\.\)]\s*)?[\(\[]?([A-Da-d1-4])[\)\]\.\:\-]\s*(.*)$/;
+  const inlineAnsRegex = /(?:Ans(?:wer)?|Correct(?:\s*Option)?|Key)[\:\s\-\=\[\(]+([A-Da-d1-4])[\\)\\]]?/i;
   const expRegex = /^(?:Explanation|Solution|Expln|Note)[\:\-\s]+(.*)$/i;
 
   for (let i = 0; i < lines.length; i++) {
@@ -125,74 +136,105 @@ export function parseMCQText(rawText) {
       continue;
     }
 
-    // Check for new question
-    const qMatch = line.match(questionRegex);
-    const isOptionFormat = line.match(/^[\(\[]?[A-Da-d][\)\]\.]/);
-    
-    if (qMatch && !isOptionFormat) {
+    // Check for isolated question number (from 2-column table grid cell)
+    const isoMatch = line.match(isolatedNumRegex);
+    if (isoMatch) {
+      const qNum = parseInt(isoMatch[1], 10);
+      if (qNum > 0 && qNum <= 500) {
+        if (currentQ && currentQ.options.length >= 2) {
+          finalizeQuestion(currentQ, answerKeyMap);
+          questions.push(currentQ);
+        }
+        qCounter++;
+        currentQ = {
+          id: 'q_' + qCounter + '_' + Date.now(),
+          originalNumber: qNum,
+          question: '',
+          options: [],
+          correctAnswer: '',
+          explanation: '',
+          needsAnswerReview: true,
+        };
+        continue;
+      }
+    }
+
+    // Check for option line (A), B., a., etc.
+    const optMatch = line.match(optionRegex);
+    const isOptionLine = optMatch && (
+      (currentQ && currentQ.options.length > 0) || 
+      /^[A-Da-d1-4][\.\)]\s*/.test(line) ||
+      /^[A-Da-d1-4]\)\s*/.test(line) ||
+      /^[A-Da-d1-4]\.\s*/.test(line) ||
+      /^\([A-Da-d1-4]\)/.test(line)
+    );
+
+    if (isOptionLine && currentQ) {
+      const optKey = normalizeOptionChar(optMatch[1]);
+      let optText = optMatch[2].trim();
+
+      const optAns = optText.match(inlineAnsRegex);
+      if (optAns) {
+        optText = optText.replace(inlineAnsRegex, '').trim();
+        currentQ.correctAnswer = normalizeOptionChar(optAns[1]);
+      }
+
+      currentQ.options.push({
+        key: optKey,
+        text: optText || `Option ${optKey}`,
+      });
+      continue;
+    }
+
+    // Check for numbered question: "1 Design a...", "2 Determine the...", "10 Consider an..."
+    const stdQMatch = line.match(standardQRegex);
+    if (stdQMatch && !isOptionLine) {
       if (currentQ && currentQ.options.length >= 2) {
         finalizeQuestion(currentQ, answerKeyMap);
         questions.push(currentQ);
       }
       
       qCounter++;
-      const numFromText = parseInt(qMatch[1], 10);
-      
+      const numFromText = parseInt(stdQMatch[1], 10);
       currentQ = {
         id: 'q_' + qCounter + '_' + Date.now(),
         originalNumber: !isNaN(numFromText) ? numFromText : qCounter,
-        question: qMatch[2] || '',
+        question: stdQMatch[2] || '',
         options: [],
         correctAnswer: '',
         explanation: '',
-        userAnswer: null,
+        needsAnswerReview: true,
       };
       continue;
     }
 
-    // Check for option inside current question
-    const optMatch = line.match(optionRegex);
-    if (optMatch && currentQ) {
-      const optKey = normalizeOptionChar(optMatch[1]);
-      const optText = optMatch[2].trim();
+    // Check for unnumbered question following a completed question
+    if (currentQ && currentQ.options.length >= 2 && !isOptionLine) {
+      const upcomingLines = lines.slice(i + 1, i + 8);
+      const hasUpcomingOptions = upcomingLines.some(nextL => /^[A-Da-d1-4][\)\.]\s*/.test(nextL));
       
-      const optAns = optText.match(inlineAnsRegex);
-      let cleanOptText = optText;
-      if (optAns) {
-        cleanOptText = optText.replace(inlineAnsRegex, '').trim();
-        currentQ.correctAnswer = normalizeOptionChar(optAns[1]);
-      }
+      if (hasUpcomingOptions && (line.length > 15 || line.includes('struct') || line.includes('C++') || line.includes('Which') || line.includes('Determine') || line.includes('Create'))) {
+        finalizeQuestion(currentQ, answerKeyMap);
+        questions.push(currentQ);
 
-      currentQ.options.push({
-        key: optKey,
-        text: cleanOptText || `Option ${optKey}`,
-      });
-      continue;
-    }
-
-    // Inline multiple options in a single line
-    if (currentQ && (line.includes('(A)') || line.includes('(a)') || line.includes('A)') || line.includes('A.'))) {
-      const multiOptRegex = /[\(\[]?([A-Da-d1-4])[\)\]\.\:]\s*([^\(\[A-Da-d1-4\n]+)/g;
-      let m;
-      let matchedAny = false;
-      const tempOpts = [];
-      while ((m = multiOptRegex.exec(line)) !== null) {
-        matchedAny = true;
-        tempOpts.push({
-          key: normalizeOptionChar(m[1]),
-          text: m[2].trim(),
-        });
-      }
-      if (matchedAny && tempOpts.length >= 2) {
-        currentQ.options.push(...tempOpts);
+        qCounter++;
+        currentQ = {
+          id: 'q_' + qCounter + '_' + Date.now(),
+          originalNumber: qCounter,
+          question: line,
+          options: [],
+          correctAnswer: '',
+          explanation: '',
+          needsAnswerReview: true,
+        };
         continue;
       }
     }
 
-    // Continuation
+    // Append to question text (including C++ code blocks) or option text
     if (currentQ) {
       if (currentQ.options.length === 0) {
-        currentQ.question += (currentQ.question ? ' ' : '') + line;
+        currentQ.question += (currentQ.question ? '\n' : '') + line;
       } else {
         const lastOpt = currentQ.options[currentQ.options.length - 1];
         lastOpt.text += ' ' + line;
@@ -200,14 +242,10 @@ export function parseMCQText(rawText) {
     }
   }
 
-  // Push last question
+  // Push final question
   if (currentQ && currentQ.options.length >= 2) {
     finalizeQuestion(currentQ, answerKeyMap);
     questions.push(currentQ);
-  }
-
-  if (questions.length === 0) {
-    return parseFallbackBlocks(text);
   }
 
   return cleanQuestions(questions);
@@ -222,10 +260,11 @@ function finalizeQuestion(q, answerKeyMap) {
 
   if (!q.correctAnswer && answerKeyMap[q.originalNumber]) {
     q.correctAnswer = answerKeyMap[q.originalNumber];
+    q.needsAnswerReview = false;
   }
 
   if (!q.correctAnswer && q.options.length > 0) {
-    q.correctAnswer = 'A';
+    q.correctAnswer = 'A'; // default placeholder
     q.needsAnswerReview = true;
   }
 }
@@ -250,42 +289,4 @@ function cleanQuestions(questions) {
     options: q.options.filter(o => o.text && o.text.trim().length > 0),
     correctAnswer: q.correctAnswer || 'A',
   })).filter(q => q.question.length > 0 && q.options.length >= 2);
-}
-
-function parseFallbackBlocks(text) {
-  const blocks = text.split(/\n\s*\n+/).filter(b => b.trim().length > 10);
-  const questions = [];
-
-  blocks.forEach((block, idx) => {
-    const lines = block.split('\n').map(l => l.trim()).filter(Boolean);
-    if (lines.length >= 3) {
-      const qText = lines[0].replace(/^(?:\d+[\.\)]|Q\.?\s*\d+[\.\:]?)\s*/i, '');
-      const optLines = lines.slice(1);
-      const options = [];
-      
-      optLines.forEach((optLine, oIdx) => {
-        const key = ['A', 'B', 'C', 'D', 'E'][oIdx] || 'A';
-        const cleanOpt = optLine.replace(/^[\(\[]?[A-Da-d1-4][\)\]\.\:\-]\s*/, '');
-        options.push({
-          key,
-          text: cleanOpt || optLine,
-        });
-      });
-
-      if (options.length >= 2) {
-        questions.push({
-          id: `fallback_${idx + 1}_${Date.now()}`,
-          index: idx + 1,
-          originalNumber: idx + 1,
-          question: qText,
-          options,
-          correctAnswer: 'A',
-          explanation: '',
-          needsAnswerReview: true,
-        });
-      }
-    }
-  });
-
-  return questions;
 }

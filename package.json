@@ -1,9 +1,9 @@
 {
-  "name": "mock-mcqmaker",
+  "name": "mock-mate",
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "homepage": "https://prajwalprajapati.github.io/mock-mcqmaker/",
+  "homepage": "https://prajwalprajapati.github.io/mock-mate/",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

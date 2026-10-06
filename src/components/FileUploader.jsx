@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { Upload, FileText, Sparkles, ArrowRight, Loader2, AlertCircle, CheckCircle2, ClipboardPaste, BookOpen } from 'lucide-react';
 import { extractTextFromPDF, parseMCQText } from '../utils/pdfParser';
 import { SAMPLE_DATASETS } from '../utils/sampleData';
@@ -101,7 +101,7 @@ export default function FileUploader({ onQuestionsLoaded }) {
           <span>Instant Revision & Practice Generator</span>
         </div>
         <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-white mb-4">
-          Turn Any <span className="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">MCQ PDF</span> Into An Interactive Mock Test
+          Turn Any <span className="bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">Question Paper</span> Into An Interactive Mock Test
         </h1>
         <p className="text-slate-400 max-w-2xl mx-auto text-base sm:text-lg leading-relaxed">
           Upload question papers, competitive exam sheets, or study materials. Automatically extract questions, take timed exams, and revise with instant feedback.

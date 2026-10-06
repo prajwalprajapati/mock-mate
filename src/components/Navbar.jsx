@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import { BookOpen, RotateCcw, Sparkles, History } from 'lucide-react';
 
 export default function Navbar({ onReset, onOpenHistory, onSelectSample }) {
@@ -17,7 +17,7 @@ export default function Navbar({ onReset, onOpenHistory, onSelectSample }) {
           <div>
             <div className="flex items-center space-x-1.5">
               <span className="font-bold text-sm sm:text-lg bg-gradient-to-r from-white via-slate-100 to-slate-400 bg-clip-text text-transparent">
-                MCQ MockMaker
+                MockMate
               </span>
               <span className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.2 rounded-full bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
                 AI
@@ -54,7 +54,7 @@ export default function Navbar({ onReset, onOpenHistory, onSelectSample }) {
           </button>
 
           <a
-            href="https://github.com/prajwalprajapati/mock-mcqmaker"
+            href="https://github.com/prajwalprajapati/mock-mate"
             target="_blank"
             rel="noopener noreferrer"
             className="p-1.5 sm:p-2 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"

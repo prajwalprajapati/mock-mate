@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import Navbar from './components/Navbar';
 import FileUploader from './components/FileUploader';
 import QuestionReview from './components/QuestionReview';
@@ -203,7 +203,7 @@ function MainApp() {
           <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
             <p>Built with React, Vite & PDF.js • 100% Client-Side Private</p>
             <p>
-              Hosted on <a href="https://github.com/prajwalprajapati/mock-mcqmaker" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">GitHub</a>
+              Hosted on <a href="https://github.com/prajwalprajapati/mock-mate" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">GitHub</a>
             </p>
           </div>
         </footer>

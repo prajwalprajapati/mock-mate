@@ -202,6 +202,7 @@ function MainApp() {
         <footer className="border-t border-slate-900 py-6 text-center text-xs text-slate-500">
           <div className="max-w-7xl mx-auto px-4 flex flex-col sm:flex-row items-center justify-between gap-2">
             <p>Built with React, Vite & PDF.js • 100% Client-Side Private</p>
+            <p>CREATED BY PRAJWAL</p>
             <p>
               Hosted on <a href="https://github.com/prajwalprajapati/mock-mate" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">GitHub</a>
             </p>
